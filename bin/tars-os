@@ -8,6 +8,7 @@ image=${TARS_IMAGE:-localhost/tars:$tag}   # use ghcr.io/<user>/tars:44 once on 
 base_ref=quay.io/fedora-ostree-desktops/cosmic-atomic:$tag
 pins=$root/digests.txt
 manifest=$root/manifest.txt
+tracked=(digests.txt packages.txt manifest.txt)   # the files this tool owns
 
 # One rpm query format, so the manifest is stable and diffable.
 rpm_qf='%{NAME}-%|EPOCH?{%{EPOCH}:}|%{VERSION}-%{RELEASE}.%{ARCH}\n'
@@ -18,10 +19,12 @@ usage: tars os <command>
 
 commands:
   bump      Move the base pin (digests.txt) to the current digest of :$tag
-  build     Build the image into root's container storage, then record its
-            installed RPMs in manifest.txt
+            and show the change
+  build     Build the image into root's container storage, record its
+            installed RPMs in manifest.txt, show what changed since the last
+            commit and offer to commit it
   deploy    Stage the rebuilt image with "bootc upgrade" (reboot to apply)
-  update    bump + build + show the package diff, then offer to deploy
+  update    bump + build (with the diff and commit offer), then offer to deploy
   status    Show the deployment status
 USAGE
 }
@@ -38,6 +41,11 @@ base_pin() {
 
 bump() {
   (($# == 0)) || { usage >&2; exit 1; }
+  bump_pin
+  show_changes || true
+}
+
+bump_pin() {
   local digest
   digest=$(skopeo inspect --format '{{.Digest}}' "docker://$base_ref")
   [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]] || die "bad digest: '$digest'"
@@ -48,7 +56,42 @@ bump() {
     printf '%-50s %s\n' "$base_ref" "$digest"
   } > "$pins.tmp"
   mv "$pins.tmp" "$pins"
-  cat "$pins"
+}
+
+# Show what differs from the last commit in the files this tool owns. The
+# manifest is shown as changed package lines only.
+show_changes() {
+  local g=(git -C "$root" --no-pager) f present=()
+  for f in "${tracked[@]}"; do [[ -e $root/$f ]] && present+=("$f"); done
+  # Intent-to-add, so a brand-new file shows up in the diff.
+  "${g[@]}" add -N -- "${present[@]}"
+  if "${g[@]}" diff --quiet HEAD -- "${present[@]}"; then
+    echo "no changes since the last commit"; return 1
+  fi
+  "${g[@]}" diff HEAD -- digests.txt packages.txt
+  if [[ -e $manifest ]]; then
+    if "${g[@]}" cat-file -e HEAD:manifest.txt 2>/dev/null; then
+      echo "package changes (manifest.txt):"
+      "${g[@]}" diff HEAD -U0 -- manifest.txt | grep '^[+-][^+-]' || echo "  (none)"
+    else
+      echo "manifest.txt: new, $(wc -l < "$manifest") packages"
+    fi
+  fi
+}
+
+# Offer to commit the owned files, like `git commit`: the editor opens with a
+# prefilled message, and only these paths are committed. Without a terminal the
+# changes are left staged.
+offer_commit() {
+  local g=(git -C "$root") f present=() ans=
+  for f in "${tracked[@]}"; do [[ -e $root/$f ]] && present+=("$f"); done
+  "${g[@]}" add -- "${present[@]}"
+  if "${g[@]}" diff --cached --quiet -- "${present[@]}"; then return 0; fi
+  if [[ ! -t 0 ]]; then echo "changes are staged; commit them with: tars git commit"; return 0; fi
+  read -r -p "Commit these changes? [y/N] " ans || true
+  if [[ $ans == [yY]* ]]; then
+    "${g[@]}" commit -e -m "os: update" -- "${present[@]}"
+  fi
 }
 
 # Sorted installed RPMs of an image, without gpg keys.
@@ -81,6 +124,9 @@ build() {
     echo "tars os: warning: base packages replaced or upgraded by this build:" >&2
     sed 's/^/  /' <<< "$changed" >&2
   fi
+
+  show_changes || true
+  offer_commit
 }
 
 # Stage the rebuilt image. This only follows the image this machine is already
@@ -89,13 +135,9 @@ deploy() { sudo bootc upgrade; }
 status() { sudo bootc status; }
 
 update() {
-  local old ans=
-  old=$(mktemp); trap 'rm -f "$old"' RETURN
-  [[ -f $manifest ]] && cp "$manifest" "$old"   # else: empty, everything shows as new
-  bump
-  build
-  echo "package changes:"
-  diff -U0 "$old" "$manifest" | grep '^[+-][^+-]' || echo "  (none)"
+  local ans=
+  bump_pin
+  build   # shows the diff and offers to commit
   if [[ -t 0 ]]; then
     read -r -p "Deploy now? [y/N] " ans || true
   fi
