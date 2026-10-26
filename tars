@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# tars: dispatcher. `tars <cmd> [args]` runs the `tars-<cmd>` script next to this file.
+set -euo pipefail
+dir=$(dirname "$(readlink -f "$0")")
+
+cmd=${1:-}
+if [[ -z $cmd || $cmd == -h || $cmd == --help || $cmd == help ]]; then
+  echo "usage: tars <command> [args]"
+  echo
+  echo "commands:"
+  for f in "$dir"/tars-*; do echo "  ${f##*/tars-}"; done
+  exit 0
+fi
+shift
+
+[[ -x $dir/tars-$cmd ]] || { echo "tars: unknown command '$cmd'" >&2; exit 1; }
+exec "$dir/tars-$cmd" "$@"
