@@ -1,41 +1,95 @@
 #!/usr/bin/env bash
 # tars os: manage the bootc OS image.
 set -euo pipefail
-root=$(dirname "$(readlink -f "$0")")
+root=$(dirname "$(dirname "$(readlink -f "$0")")")
 tag=${TARS_TAG:-44}
 image=${TARS_IMAGE:-localhost/tars:$tag}   # use ghcr.io/<user>/tars:44 once on GitHub
 base_ref=quay.io/fedora-ostree-desktops/cosmic-atomic:$tag
 pins=$root/digests.txt
+pkgs=$root/packages.txt
+
+# Top-level packages to layer onto the base. Their full dependency closure is
+# resolved and pinned to exact versions in packages.txt by `tars os digests`.
+want=(gcc mold)
 
 usage() {
   cat <<USAGE
 usage: tars os <command>
 
 commands:
-  digests   Refresh the base pin in digests.txt
+  digests [--no-base]
+            Refresh the base pin (digests.txt) and the exact RPM versions
+            (packages.txt). --no-base keeps the current base pin and only
+            re-resolves the RPMs (use after changing \`want\` in this script).
   build     Build the image into root's container storage
   deploy    Switch this machine to the built image (reboot to apply)
   status    Show the deployment status
 USAGE
 }
 
+die() { echo "tars os: $*" >&2; exit 1; }
+
+# Print "<ref> <digest>" from digests.txt.
+base_pin() {
+  local ref digest
+  [[ -f $pins ]] || die "no $pins; run 'tars os digests' first"
+  read -r ref digest < <(grep -v '^#' "$pins" | grep .) || die "no pin in $pins"
+  echo "$ref $digest"
+}
+
 digests() {
-  local d
-  d=$(skopeo inspect --format '{{.Digest}}' "docker://$base_ref")
-  [[ $d =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "bad digest: '$d'" >&2; exit 1; }
+  local refresh_base=1 ref digest rpms
+  while (($#)); do
+    case $1 in
+      --no-base) refresh_base=0 ;;
+      *) usage >&2; exit 1 ;;
+    esac
+    shift
+  done
+
+  if ((refresh_base)); then
+    ref=$base_ref
+    digest=$(skopeo inspect --format '{{.Digest}}' "docker://$ref")
+    [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]] || die "bad digest: '$digest'"
+  else
+    read -r ref digest < <(base_pin)
+  fi
+
+  # Resolve the closure of $want inside the base, recording everything dnf adds.
+  rpms=$(podman run --rm -e LC_ALL=C "${ref%:*}@$digest" bash -euo pipefail -c '
+    q() { rpm -qa --qf "%{NAME}-%|EPOCH?{%{EPOCH}:}|%{VERSION}-%{RELEASE}.%{ARCH}\n" | sort; }
+    q > /tmp/before
+    dnf install -y --setopt=install_weak_deps=False "$@" >&2
+    q > /tmp/after
+    comm -13 /tmp/before /tmp/after | grep -v "^gpg-pubkey-"
+  ' _ "${want[@]}")
+  [[ -n $rpms ]] || die "no packages resolved"
+
+  # Write both files to temp names first and move them into place only once
+  # everything has succeeded, so a failure can't leave them out of step.
+  if ((refresh_base)); then
+    {
+      echo "# Pinned images. Regenerate with: tars os digests"
+      echo "# Format: <ref>  <digest>"
+      echo
+      printf '%-50s %s\n' "$ref" "$digest"
+    } > "$pins.tmp"
+  fi
   {
-    echo "# Pinned images. Regenerate with: tars os digests"
-    echo "# Format: <ref>  <digest>"
+    echo "# Pinned RPMs (full closure of: ${want[*]}). Regenerate with: tars os digests"
+    echo "# Format: <name>-<epoch:>version-release.arch"
     echo
-    printf '%-50s %s\n' "$base_ref" "$d"
-  } > "$pins.tmp"
-  mv "$pins.tmp" "$pins"
-  cat "$pins"
+    echo "$rpms"
+  } > "$pkgs.tmp"
+
+  if ((refresh_base)); then mv "$pins.tmp" "$pins"; fi
+  mv "$pkgs.tmp" "$pkgs"
+  cat "$pins" "$pkgs"
 }
 
 build() {
   local ref digest
-  read -r ref digest < <(grep -v '^#' "$pins" | grep .)
+  read -r ref digest < <(base_pin)
   sudo podman build --pull=always \
     --build-arg BASE="${ref%:*}@$digest" -t "$image" "$root"
 }
@@ -43,7 +97,8 @@ build() {
 deploy() { sudo bootc switch --transport containers-storage "$image"; }
 status() { sudo bootc status; }
 
-case ${1:-} in
-  digests|build|deploy|status) "$1" ;;
-  *) usage; [[ ${1:-} =~ ^(-h|--help|help)?$ ]] ;;
+cmd=${1:-}
+case $cmd in
+  digests|build|deploy|status) shift; "$cmd" "$@" ;;
+  *) usage; [[ $cmd =~ ^(-h|--help|help)?$ ]] ;;
 esac
