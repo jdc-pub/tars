@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# tars: dispatcher. `tars <cmd> [args]` runs the `tars-<cmd>` script next to this file.
 set -euo pipefail
 dir=$(dirname "$(readlink -f "$0")")
 

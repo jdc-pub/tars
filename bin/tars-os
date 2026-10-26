@@ -1,16 +1,13 @@
 #!/usr/bin/env bash
-# tars os: manage the bootc OS image, defined by the Containerfile and built
-# with a root podman build.
 set -euo pipefail
 root=$(dirname "$(dirname "$(readlink -f "$0")")")
 tag=${TARS_TAG:-44}
-image=${TARS_IMAGE:-localhost/tars:$tag}   # use ghcr.io/<user>/tars:44 once on GitHub
+image=${TARS_IMAGE:-localhost/tars:$tag}
 base_ref=quay.io/fedora-ostree-desktops/cosmic-atomic:$tag
 pins=$root/digests.txt
 manifest=$root/manifest.txt
-tracked=(digests.txt packages.txt manifest.txt)   # the files this tool owns
+tracked=(digests.txt packages.txt manifest.txt)
 
-# One rpm query format, so the manifest is stable and diffable.
 rpm_qf='%{NAME}-%|EPOCH?{%{EPOCH}:}|%{VERSION}-%{RELEASE}.%{ARCH}\n'
 
 usage() {
@@ -31,7 +28,6 @@ USAGE
 
 die() { echo "tars os: $*" >&2; exit 1; }
 
-# Print "<ref> <digest>" from digests.txt.
 base_pin() {
   local ref digest
   [[ -f $pins ]] || die "no $pins; run 'tars os bump' first"
@@ -51,19 +47,15 @@ bump_pin() {
   [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]] || die "bad digest: '$digest'"
   {
     echo "# Pinned base image. Move it with: tars os bump"
-    echo "# Format: <ref>  <digest>"
     echo
     printf '%-50s %s\n' "$base_ref" "$digest"
   } > "$pins.tmp"
   mv "$pins.tmp" "$pins"
 }
 
-# Show what differs from the last commit in the files this tool owns. The
-# manifest is shown as changed package lines only.
 show_changes() {
   local g=(git -C "$root" --no-pager) f present=()
   for f in "${tracked[@]}"; do [[ -e $root/$f ]] && present+=("$f"); done
-  # Intent-to-add, so a brand-new file shows up in the diff.
   "${g[@]}" add -N -- "${present[@]}"
   if "${g[@]}" diff --quiet HEAD -- "${present[@]}"; then
     echo "no changes since the last commit"; return 1
@@ -79,9 +71,6 @@ show_changes() {
   fi
 }
 
-# Offer to commit the owned files, like `git commit`: the editor opens with a
-# prefilled message, and only these paths are committed. Without a terminal the
-# changes are left staged.
 offer_commit() {
   local g=(git -C "$root") f present=() ans=
   for f in "${tracked[@]}"; do [[ -e $root/$f ]] && present+=("$f"); done
@@ -94,7 +83,6 @@ offer_commit() {
   fi
 }
 
-# Sorted installed RPMs of an image, without gpg keys.
 rpms_of() {
   sudo podman run --rm --entrypoint rpm -e LC_ALL=C "$1" -qa --qf "$rpm_qf" \
     | grep -v '^gpg-pubkey-' | sort
@@ -105,20 +93,14 @@ build() {
   read -r ref digest < <(base_pin)
   [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]] || die "bad digest in $pins: '$digest'"
 
-  # Root storage, because bootc reads root's containers-storage. --no-cache
-  # because the package step's inputs don't change when the repos do, so a
-  # cached layer would silently keep old versions.
   sudo podman build --pull=always --no-cache \
     --build-arg BASE="${ref%:*}@$digest" -t "$image" "$root"
 
-  # Record what the build actually contains. This is output, never input.
   rpms_of "$image" > "$manifest.tmp"
   [[ -s $manifest.tmp ]] || die "empty package manifest"
   mv "$manifest.tmp" "$manifest"
   echo "wrote $(wc -l < "$manifest") packages to manifest.txt"
 
-  # Floating packages can pull newer versions of packages the base ships
-  # (e.g. glibc-devel forcing glibc). Report any base package that changed.
   changed=$(rpms_of "${ref%:*}@$digest" | comm -23 - "$manifest" || true)
   if [[ -n $changed ]]; then
     echo "tars os: warning: base packages replaced or upgraded by this build:" >&2
@@ -129,15 +111,13 @@ build() {
   offer_commit
 }
 
-# Stage the rebuilt image. This only follows the image this machine is already
-# on; the one-off move onto it is `bootc switch` (see README).
 deploy() { sudo bootc upgrade; }
 status() { sudo bootc status; }
 
 update() {
   local ans=
   bump_pin
-  build   # shows the diff and offers to commit
+  build
   if [[ -t 0 ]]; then
     read -r -p "Deploy now? [y/N] " ans || true
   fi

@@ -1,3 +1,2 @@
 #!/usr/bin/env bash
-# tars git: run git inside the tars repo, from any directory.
 exec git -C "$(dirname "$(readlink -f "$0")")" "$@"

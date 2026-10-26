@@ -1,6 +1,2 @@
-# Layered packages, by name. These float: each build takes whatever the repos
-# have now, and manifest.txt records the result. Edit freely.
-# To hold one at an exact version, write its full spec (gcc-16.2.1-2.fc44)
-# and say why in a comment.
 gcc
 mold

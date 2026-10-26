@@ -1,0 +1,33 @@
+# tars
+
+Fedora 44 COSMIC Atomic as a bootable container image, built with `bootc` from a plain `Containerfile`. Run on the host, not in a container. Has `podman`, `skopeo`, `bootc` and `sudo` from stock Atomic.
+
+## Layout
+
+| Path | What it holds |
+| --- | --- |
+| `Containerfile` | One pinned input (the base image) and one floating one (the layered packages). No third-party code in the build. |
+| `digests.txt` | The pinned base image digest, written by `tars os bump`. Do not hand-edit. |
+| `packages.txt` | Layered RPM names, hand-edited, one per line. They float. |
+| `manifest.txt` | Every RPM in the built image with its exact version, written by `tars os build`. A record, never an input. Commit it so `git diff` shows what an update changed. |
+| `bin/tars` | Dispatcher. `tars <cmd>` runs the `tars-<cmd>` script beside it. |
+| `bin/tars-os` | Image management (bump, build, deploy, update, status). |
+| `bin/tars-git` | Runs git in this repo from any directory. |
+
+## Build and update
+
+`tars os build` reads the base pin, then builds with `--pull=always --no-cache` into root's container storage. Root storage because bootc reads root's containers-storage. No cache because the dnf layer's inputs do not change when the repos do, so a cached layer would keep old versions. It then writes `manifest.txt` from `rpm -qa` of the built image, shows what changed since the last commit in the three tracked files, and offers to commit just them. A floating package can pull a newer version of a package the base ships (for example `glibc-devel` needing a matching `glibc`); build warns when that happens.
+
+`tars os bump` moves the base pin and shows the change but does not offer to commit, since a new digest with the old manifest is a state that was never built.
+
+The base digest is the reproducibility anchor, together with the built image and `bootc rollback`. Exact RPM versions are not pinned by default: Fedora keeps only the latest build of each package, so such pins go stale within days. To hold one, write its full spec (`gcc-16.2.1-2.fc44`) in `packages.txt`.
+
+Fedora's dated tags are removed after about four weeks, so an old digest will eventually fail to pull. Run `tars os bump` or `tars os update` at least that often.
+
+`tars os deploy` runs `bootc upgrade`, which follows the image the machine is already on. The one-off move onto the image is `bootc switch`. Switching to the image you are already on is a no-op even if the image behind the name changed. To move to a registry, set `TARS_IMAGE=ghcr.io/<user>/tars:44`, build and push from Actions, and `bootc switch` to it once.
+
+BlueBuild was tried and dropped. It pulled third-party images by tag that run as root and ship in the OS, and its scripts rewire `/opt`, wipe `/var` and rewrite rpm-ostree's base record. The plain `Containerfile` does none of that. Prefer `COPY --from=<pinned image>` over a module for anything that is not a system toolchain.
+
+Rust lives in `~/.rustup`, pinned per project with `rust-toolchain.toml` and linked with mold via `~/.cargo/config.toml`. Kernel build tooling lives in toolbox, not in this image.
+
+Update this file when the information in it changes during a task.
