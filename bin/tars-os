@@ -22,7 +22,7 @@ commands:
             (packages.txt). --no-base keeps the current base pin and only
             re-resolves the RPMs (use after changing \`want\` in this script).
   build     Build the image into root's container storage
-  deploy    Switch this machine to the built image (reboot to apply)
+  deploy    Stage the rebuilt image with "bootc upgrade" (reboot to apply)
   status    Show the deployment status
 USAGE
 }
@@ -94,7 +94,9 @@ build() {
     --build-arg BASE="${ref%:*}@$digest" -t "$image" "$root"
 }
 
-deploy() { sudo bootc switch --transport containers-storage "$image"; }
+# Stage the rebuilt image. This only follows the image this machine is already
+# on; the one-off move onto it is `bootc switch` (see README).
+deploy() { sudo bootc upgrade; }
 status() { sudo bootc status; }
 
 cmd=${1:-}

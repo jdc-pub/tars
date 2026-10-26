@@ -14,7 +14,7 @@ Run on the host. Needs `podman`, `skopeo`, `bootc` and `sudo` (all on Atomic alr
 ./tars os digests     # refresh the base pin (digests.txt) and RPM pins (packages.txt)
 ./tars os digests --no-base   # keep the base pin, only re-resolve the RPMs
 ./tars os build       # build into root's container storage
-./tars os deploy      # switch this machine over (reboot to apply)
+./tars os deploy      # stage the rebuilt image (bootc upgrade; reboot to apply)
 ./tars os status      # show deployments
 ```
 
@@ -22,12 +22,19 @@ Run on the host. Needs `podman`, `skopeo`, `bootc` and `sudo` (all on Atomic alr
 
 `tars` dispatches `tars <cmd>` to the `tars-<cmd>` script beside it, so new areas are new `tars-*` files.
 
-Install stock Fedora COSMIC Atomic from the official ISO first, then `tars os deploy`. Roll back with `bootc rollback` or the boot menu.
+Install stock Fedora COSMIC Atomic from the official ISO first. Then, **once per install**, move onto the image:
+
+```sh
+./tars os build
+sudo bootc switch --transport containers-storage localhost/tars:44
+```
+
+Reboot. From then on, update with `tars os digests`, `tars os build`, `tars os deploy`, and reboot. Roll back with `bootc rollback` or the boot menu.
 
 ## Notes
 
 - **`digests.txt` is the single source of truth** for the base pin; `tars os build` passes it to the `Containerfile`. It is generated, so don't hand-edit it. Keep it in Git so bumps show up in review.
-- **Local storage for now.** `bootc upgrade` does nothing for a local image, so update by re-running `tars os build` and `tars os deploy`. When this moves to GitHub, set `TARS_IMAGE=ghcr.io/<user>/tars:44`, build and push from Actions, and `bootc switch` to it for normal `bootc upgrade`.
+- **Local storage for now.** `tars os deploy` runs `bootc upgrade`, which follows the image you're already on. Don't use `bootc switch` to pick up a rebuild: switching to the image you're already on is a no-op ("Image specification is unchanged"), even if the image behind the name changed. When this moves to GitHub, set `TARS_IMAGE=ghcr.io/<user>/tars:44`, build and push from Actions, and `bootc switch` to it once for normal `bootc upgrade`.
 - **Pins expire.** Fedora's dated tags are removed after about 4 weeks, so run `tars os digests` before each build.
 - **`packages.txt` is generated too.** `tars os digests` resolves the full dependency closure of the `want` list in `bin/tars-os` (currently `gcc mold`) inside the pinned base image and records exact versions. To add a package, add it to `want` and run `tars os digests --no-base`, which leaves the base pin alone. Both files are written only after everything succeeds. Review the diff.
 - **RPM pins expire.** Fedora only keeps the latest build of each package, so an old `packages.txt` will fail to build once those versions are replaced. That is deliberate: re-run `tars os digests` and review.
