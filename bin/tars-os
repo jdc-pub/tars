@@ -1,28 +1,27 @@
 #!/usr/bin/env bash
-# tars os: manage the bootc OS image.
+# tars os: manage the bootc OS image, defined by the Containerfile and built
+# with a root podman build.
 set -euo pipefail
 root=$(dirname "$(dirname "$(readlink -f "$0")")")
 tag=${TARS_TAG:-44}
 image=${TARS_IMAGE:-localhost/tars:$tag}   # use ghcr.io/<user>/tars:44 once on GitHub
 base_ref=quay.io/fedora-ostree-desktops/cosmic-atomic:$tag
 pins=$root/digests.txt
-pkgs=$root/packages.txt
+manifest=$root/manifest.txt
 
-# Top-level packages to layer onto the base. Their full dependency closure is
-# resolved and pinned to exact versions in packages.txt by `tars os digests`.
-want=(gcc mold)
+# One rpm query format, so the manifest is stable and diffable.
+rpm_qf='%{NAME}-%|EPOCH?{%{EPOCH}:}|%{VERSION}-%{RELEASE}.%{ARCH}\n'
 
 usage() {
   cat <<USAGE
 usage: tars os <command>
 
 commands:
-  digests [--no-base]
-            Refresh the base pin (digests.txt) and the exact RPM versions
-            (packages.txt). --no-base keeps the current base pin and only
-            re-resolves the RPMs (use after changing \`want\` in this script).
-  build     Build the image into root's container storage
+  bump      Move the base pin (digests.txt) to the current digest of :$tag
+  build     Build the image into root's container storage, then record its
+            installed RPMs in manifest.txt
   deploy    Stage the rebuilt image with "bootc upgrade" (reboot to apply)
+  update    bump + build + show the package diff, then offer to deploy
   status    Show the deployment status
 USAGE
 }
@@ -32,66 +31,56 @@ die() { echo "tars os: $*" >&2; exit 1; }
 # Print "<ref> <digest>" from digests.txt.
 base_pin() {
   local ref digest
-  [[ -f $pins ]] || die "no $pins; run 'tars os digests' first"
+  [[ -f $pins ]] || die "no $pins; run 'tars os bump' first"
   read -r ref digest < <(grep -v '^#' "$pins" | grep .) || die "no pin in $pins"
   echo "$ref $digest"
 }
 
-digests() {
-  local refresh_base=1 ref digest rpms
-  while (($#)); do
-    case $1 in
-      --no-base) refresh_base=0 ;;
-      *) usage >&2; exit 1 ;;
-    esac
-    shift
-  done
-
-  if ((refresh_base)); then
-    ref=$base_ref
-    digest=$(skopeo inspect --format '{{.Digest}}' "docker://$ref")
-    [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]] || die "bad digest: '$digest'"
-  else
-    read -r ref digest < <(base_pin)
-  fi
-
-  # Resolve the closure of $want inside the base, recording everything dnf adds.
-  rpms=$(podman run --rm -e LC_ALL=C "${ref%:*}@$digest" bash -euo pipefail -c '
-    q() { rpm -qa --qf "%{NAME}-%|EPOCH?{%{EPOCH}:}|%{VERSION}-%{RELEASE}.%{ARCH}\n" | sort; }
-    q > /tmp/before
-    dnf install -y --setopt=install_weak_deps=False "$@" >&2
-    q > /tmp/after
-    comm -13 /tmp/before /tmp/after | grep -v "^gpg-pubkey-"
-  ' _ "${want[@]}")
-  [[ -n $rpms ]] || die "no packages resolved"
-
-  # Write both files to temp names first and move them into place only once
-  # everything has succeeded, so a failure can't leave them out of step.
-  if ((refresh_base)); then
-    {
-      echo "# Pinned images. Regenerate with: tars os digests"
-      echo "# Format: <ref>  <digest>"
-      echo
-      printf '%-50s %s\n' "$ref" "$digest"
-    } > "$pins.tmp"
-  fi
+bump() {
+  (($# == 0)) || { usage >&2; exit 1; }
+  local digest
+  digest=$(skopeo inspect --format '{{.Digest}}' "docker://$base_ref")
+  [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]] || die "bad digest: '$digest'"
   {
-    echo "# Pinned RPMs (full closure of: ${want[*]}). Regenerate with: tars os digests"
-    echo "# Format: <name>-<epoch:>version-release.arch"
+    echo "# Pinned base image. Move it with: tars os bump"
+    echo "# Format: <ref>  <digest>"
     echo
-    echo "$rpms"
-  } > "$pkgs.tmp"
+    printf '%-50s %s\n' "$base_ref" "$digest"
+  } > "$pins.tmp"
+  mv "$pins.tmp" "$pins"
+  cat "$pins"
+}
 
-  if ((refresh_base)); then mv "$pins.tmp" "$pins"; fi
-  mv "$pkgs.tmp" "$pkgs"
-  cat "$pins" "$pkgs"
+# Sorted installed RPMs of an image, without gpg keys.
+rpms_of() {
+  sudo podman run --rm --entrypoint rpm -e LC_ALL=C "$1" -qa --qf "$rpm_qf" \
+    | grep -v '^gpg-pubkey-' | sort
 }
 
 build() {
-  local ref digest
+  local ref digest changed
   read -r ref digest < <(base_pin)
-  sudo podman build --pull=always \
+  [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]] || die "bad digest in $pins: '$digest'"
+
+  # Root storage, because bootc reads root's containers-storage. --no-cache
+  # because the package step's inputs don't change when the repos do, so a
+  # cached layer would silently keep old versions.
+  sudo podman build --pull=always --no-cache \
     --build-arg BASE="${ref%:*}@$digest" -t "$image" "$root"
+
+  # Record what the build actually contains. This is output, never input.
+  rpms_of "$image" > "$manifest.tmp"
+  [[ -s $manifest.tmp ]] || die "empty package manifest"
+  mv "$manifest.tmp" "$manifest"
+  echo "wrote $(wc -l < "$manifest") packages to manifest.txt"
+
+  # Floating packages can pull newer versions of packages the base ships
+  # (e.g. glibc-devel forcing glibc). Report any base package that changed.
+  changed=$(rpms_of "${ref%:*}@$digest" | comm -23 - "$manifest" || true)
+  if [[ -n $changed ]]; then
+    echo "tars os: warning: base packages replaced or upgraded by this build:" >&2
+    sed 's/^/  /' <<< "$changed" >&2
+  fi
 }
 
 # Stage the rebuilt image. This only follows the image this machine is already
@@ -99,8 +88,22 @@ build() {
 deploy() { sudo bootc upgrade; }
 status() { sudo bootc status; }
 
+update() {
+  local old ans=
+  old=$(mktemp); trap 'rm -f "$old"' RETURN
+  [[ -f $manifest ]] && cp "$manifest" "$old"   # else: empty, everything shows as new
+  bump
+  build
+  echo "package changes:"
+  diff -U0 "$old" "$manifest" | grep '^[+-][^+-]' || echo "  (none)"
+  if [[ -t 0 ]]; then
+    read -r -p "Deploy now? [y/N] " ans || true
+  fi
+  if [[ $ans == [yY]* ]]; then deploy; fi
+}
+
 cmd=${1:-}
 case $cmd in
-  digests|build|deploy|status) shift; "$cmd" "$@" ;;
+  bump|build|deploy|update|status) shift; "$cmd" "$@" ;;
   *) usage; [[ $cmd =~ ^(-h|--help|help)?$ ]] ;;
 esac
