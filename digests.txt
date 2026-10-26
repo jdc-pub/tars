@@ -1,4 +1,4 @@
-# Pinned images. Regenerate with: make digests
+# Pinned images. Regenerate with: tars os digests
 # Format: <ref>  <digest>
 
 quay.io/fedora-ostree-desktops/cosmic-atomic:44    sha256:075e858102389eaa0ee531c65865d8e43cc1925498b56e565f7b488fd0af2f09
