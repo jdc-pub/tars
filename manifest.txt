@@ -1352,6 +1352,7 @@ systemd-shared-259.10-1.fc44.x86_64
 systemd-sysusers-259.10-1.fc44.x86_64
 systemd-udev-259.10-1.fc44.x86_64
 taglib-2.3-2.fc44.x86_64
+tailscale-1.98.8-1.fc44.x86_64
 tar-2:1.35-9.fc44.x86_64
 tbb-2022.3.0-3.fc44.x86_64
 tcl-1:9.0.2-1.fc44.x86_64
