@@ -344,6 +344,7 @@ gettext-0.26-5.fc44.x86_64
 gettext-envsubst-0.26-5.fc44.x86_64
 gettext-libs-0.26-5.fc44.x86_64
 gettext-runtime-0.26-5.fc44.x86_64
+gh-2.97.0-2.fc44.x86_64
 ghostscript-10.06.0-3.fc44.x86_64
 ghostscript-tools-fontutils-10.06.0-3.fc44.noarch
 ghostscript-tools-printing-10.06.0-3.fc44.noarch
