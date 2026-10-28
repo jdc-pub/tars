@@ -9,6 +9,7 @@ Fedora 44 COSMIC Atomic as a bootable container image, built with `bootc` from a
 | `Containerfile` | One pinned input (the base image) and one floating one (the layered packages). No third-party code in the build. |
 | `digests.txt` | The pinned base image digest, written by `tars os bump`. Do not hand-edit. |
 | `packages.txt` | Layered RPM names, hand-edited, one per line. They float. |
+| `system/` | Overlay copied onto `/` in the image (`COPY system/ /`). Path under `system/` is the path in the image. Holds config such as `usr/lib/NetworkManager/conf.d/30-wifi-powersave.conf`. |
 | `manifest.txt` | Every RPM in the built image with its exact version, written by `tars os build`. A record, never an input. Commit it so `git diff` shows what an update changed. |
 | `bin/tars` | Dispatcher. `tars <cmd>` runs the `tars-<cmd>` script beside it. |
 | `bin/tars-os` | Image management (bump, build, deploy, update, status). |
