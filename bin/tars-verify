@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# Check that packages.txt and manifest.txt match what the running system has.
+set -euo pipefail
+root=$(dirname "$(dirname "$(readlink -f "$0")")")
+packages=$root/packages.txt
+manifest=$root/manifest.txt
+rpm_qf='%{NAME}-%|EPOCH?{%{EPOCH}:}|%{VERSION}-%{RELEASE}.%{ARCH}\n'
+
+usage() {
+  cat <<USAGE
+usage: tars verify
+
+Checks, against the running system:
+  1. every entry in packages.txt is listed in manifest.txt
+  2. every entry in packages.txt is installed
+  3. manifest.txt is identical to the installed RPMs
+
+Exits 0 if all hold, 1 if not. A mismatch in 3 is expected after
+"tars os build" until the new image is deployed and booted.
+USAGE
+}
+
+case ${1:-} in
+  -h|--help|help) usage; exit 0 ;;
+  '') ;;
+  *) usage >&2; exit 1 ;;
+esac
+
+die() { echo "tars verify: $*" >&2; exit 1; }
+[[ -f $packages ]] || die "no $packages"
+[[ -f $manifest ]] || die "no $manifest; run 'tars os build' first"
+
+fail=0
+bad() { echo "  $*"; fail=1; }
+
+# Entries of packages.txt: a name, or a full spec such as gcc-16.2.1-2.fc44.
+mapfile -t entries < <(sed 's/#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//' "$packages" | grep .)
+
+installed=$(LC_ALL=C rpm -qa --qf "$rpm_qf" | grep -v '^gpg-pubkey-' | sort)
+
+in_list() { # spec, list: does any RPM in the list match name or name-version-release?
+  local spec=$1 line name nvr
+  while IFS= read -r line; do
+    name=${line%-*-*}
+    nvr=${line%.*}; nvr=${nvr/-[0-9]*:/-}   # drop arch and epoch
+    [[ $spec == "$name" || $spec == "$line" || $nvr == "$spec" || $nvr == "$spec".* || $nvr == "$spec"-* ]] && return 0
+  done <<< "$2"
+  return 1
+}
+
+manifest_text=$(< "$manifest")
+
+echo "packages.txt vs manifest.txt (${#entries[@]} entries)"
+for e in "${entries[@]}"; do
+  in_list "$e" "$manifest_text" || bad "not in manifest.txt: $e"
+done
+
+echo "packages.txt vs installed system"
+for e in "${entries[@]}"; do
+  rpm -q "$e" &>/dev/null || bad "not installed: $e"
+done
+
+echo "manifest.txt vs installed system"
+only_manifest=$(comm -23 <(sort "$manifest") <(echo "$installed"))
+only_system=$(comm -13 <(sort "$manifest") <(echo "$installed"))
+if [[ -n $only_manifest ]]; then
+  echo "  in manifest.txt but not installed (or other version installed):"
+  sed 's/^/    /' <<< "$only_manifest"; fail=1
+fi
+if [[ -n $only_system ]]; then
+  echo "  installed but not in manifest.txt (or other version):"
+  sed 's/^/    /' <<< "$only_system"; fail=1
+fi
+
+if ((fail)); then
+  echo "MISMATCH" >&2
+  exit 1
+fi
+echo "OK: packages.txt and manifest.txt match the system"

@@ -14,10 +14,13 @@ Fedora 44 COSMIC Atomic as a bootable container image, built with `bootc` from a
 | `bin/tars` | Dispatcher. `tars <cmd>` runs the `tars-<cmd>` script beside it. |
 | `bin/tars-os` | Image management (bump, build, deploy, update, status). |
 | `bin/tars-git` | Runs git in this repo from any directory. |
+| `bin/tars-verify` | Checks `packages.txt` and `manifest.txt` against the running system: every entry is in the manifest and installed, and the manifest equals the installed RPMs. Exits 1 on any mismatch. |
 
 ## Build and update
 
 `tars os build` reads the base pin, then builds with `--pull=always --no-cache` into root's container storage. Root storage because bootc reads root's containers-storage. No cache because the dnf layer's inputs do not change when the repos do, so a cached layer would keep old versions. It then writes `manifest.txt` from `rpm -qa` of the built image, shows what changed since the last commit in the three tracked files, and offers to commit just them. A floating package can pull a newer version of a package the base ships (for example `glibc-devel` needing a matching `glibc`); build warns when that happens.
+
+`tars verify` compares the repo with what is installed. After `tars os build` it reports a mismatch until the new image is deployed and booted; that is expected.
 
 `tars os bump` moves the base pin and shows the change but does not offer to commit, since a new digest with the old manifest is a state that was never built.
 
