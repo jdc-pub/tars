@@ -1,0 +1,2 @@
+# Let the logged-in user open Keychron HID devices (WebHID / Keychron Launcher)
+KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3434", TAG+="uaccess"
