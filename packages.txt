@@ -3,3 +3,5 @@ mold
 tailscale
 gh
 sqlite
+openssl-devel
+clang
