@@ -86,6 +86,9 @@ cifs-utils-7.9-2.fc44.x86_64
 cifs-utils-info-7.9-2.fc44.x86_64
 cirrus-audio-firmware-20261019-1.fc44.noarch
 cjson-1.7.19-1.fc44.x86_64
+clang-22.1.8-4.fc44.x86_64
+clang-libs-22.1.8-4.fc44.x86_64
+clang-resource-filesystem-22.1.8-4.fc44.x86_64
 cldr-emoji-annotation-1:48.2-1.fc44.noarch
 cldr-emoji-annotation-dtd-1:48.2-1.fc44.noarch
 cmake-filesystem-4.3.0-1.fc44.x86_64
@@ -331,6 +334,7 @@ game-music-emu-0.6.4-3.fc44.x86_64
 gawk-5.3.2-3.fc44.x86_64
 gawk-all-langpacks-5.3.2-3.fc44.x86_64
 gcc-16.2.1-2.fc44.x86_64
+gcc-c++-16.2.1-2.fc44.x86_64
 gcr3-3.41.1-12.fc44.x86_64
 gcr3-base-3.41.1-12.fc44.x86_64
 gcr-libs-4.4.1-1.fc44.x86_64
@@ -492,13 +496,13 @@ hostname-3.25-4.fc44.x86_64
 hplip-3.26.6-2.fc44.x86_64
 hplip-common-3.26.6-2.fc44.x86_64
 hplip-libs-3.26.6-2.fc44.x86_64
-hunspell-1.7.5-1.fc44.x86_64
+hunspell-1.7.6-1.fc44.x86_64
 hunspell-en-0.20260225-2.fc44.noarch
 hunspell-en-AU-0.20260225-2.fc44.noarch
 hunspell-en-CA-0.20260225-2.fc44.noarch
 hunspell-en-GB-0.20260225-2.fc44.noarch
 hunspell-en-US-0.20260225-2.fc44.noarch
-hunspell-filesystem-1.7.5-1.fc44.x86_64
+hunspell-filesystem-1.7.6-1.fc44.x86_64
 hwdata-0.412-1.fc44.noarch
 hyperv-daemons-6.10-3.fc44.x86_64
 hyperv-daemons-license-6.10-3.fc44.noarch
@@ -514,7 +518,7 @@ ibus-gtk4-1.5.34-4.fc44.x86_64
 ibus-hangul-1.5.5-12.fc44.x86_64
 ibus-libpinyin-1.16.5-3.fc44.x86_64
 ibus-libs-1.5.34-4.fc44.x86_64
-ibus-m17n-1.4.39-1.fc44.x86_64
+ibus-m17n-1.4.41-1.fc44.x86_64
 ibus-panel-1.5.34-4.fc44.x86_64
 ibus-setup-1.5.34-4.fc44.noarch
 ibus-typing-booster-2.31.1-1.fc44.noarch
@@ -873,7 +877,7 @@ libsmartcols-2.41.6-1.fc44.x86_64
 libsmbclient-2:4.24.7-1.fc44.x86_64
 libsndfile-1.2.2-11.fc44.x86_64
 libsodium-1.0.22-1.fc44.x86_64
-libsolv-0.7.40-2.fc44.x86_64
+libsolv-0.7.41-1.fc44.x86_64
 libsoup3-3.6.6-10.fc44.x86_64
 libsrtp-2.8.0-1.fc44.x86_64
 libss-1.47.3-4.fc44.x86_64
@@ -884,6 +888,7 @@ libsss_idmap-2.13.1-2.fc44.x86_64
 libsss_nss_idmap-2.13.1-2.fc44.x86_64
 libsss_sudo-2.13.1-2.fc44.x86_64
 libstdc++-16.2.1-2.fc44.x86_64
+libstdc++-devel-16.2.1-2.fc44.x86_64
 libstemmer-3.0.1-11.fc44.x86_64
 libswresample-free-8.1.3-1.fc44.x86_64
 libswscale-free-8.1.3-1.fc44.x86_64
@@ -1083,6 +1088,7 @@ opensc-libs-0.27.1-2.fc44.x86_64
 openssh-10.2p1-16.fc44.x86_64
 openssh-clients-10.2p1-16.fc44.x86_64
 openssh-server-10.2p1-16.fc44.x86_64
+openssl-devel-1:3.5.9-1.fc44.x86_64
 openssl-libs-1:3.5.9-1.fc44.x86_64
 open-vm-tools-13.1.0-2.fc44.x86_64
 open-vm-tools-desktop-13.1.0-2.fc44.x86_64
