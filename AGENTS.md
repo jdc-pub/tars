@@ -18,7 +18,7 @@ Fedora 44 COSMIC Atomic as a bootable container image, built with `bootc` from a
 
 ## Build and update
 
-`tars os build` reads the base pin, then builds with `--pull=always --no-cache` into root's container storage. Root storage because bootc reads root's containers-storage. No cache because the dnf layer's inputs do not change when the repos do, so a cached layer would keep old versions. It then writes `manifest.txt` from `rpm -qa` of the built image, shows what changed since the last commit in the three tracked files, and offers to commit just them. A floating package can pull a newer version of a package the base ships (for example `glibc-devel` needing a matching `glibc`); build warns when that happens.
+`tars os build` reads the base pin, then builds with `--pull=missing --no-cache` into root's container storage. Root storage because bootc reads root's containers-storage. The base is pinned by digest, so a local copy is exact and only a missing one is pulled. No cache because the dnf layer's inputs do not change when the repos do, so a cached layer would keep old versions. It then writes `manifest.txt` from `rpm -qa` of the built image, shows what changed since the last commit in the three tracked files, and offers to commit just them. A floating package can pull a newer version of a package the base ships (for example `glibc-devel` needing a matching `glibc`); build warns when that happens.
 
 `tars verify` compares the repo with what is installed. After `tars os build` it reports a mismatch until the new image is deployed and booted; that is expected.
 

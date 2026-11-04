@@ -93,7 +93,7 @@ build() {
   read -r ref digest < <(base_pin)
   [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]] || die "bad digest in $pins: '$digest'"
 
-  sudo podman build --pull=always --no-cache \
+  sudo podman build --pull=missing --no-cache \
     --build-arg BASE="${ref%:*}@$digest" -t "$image" "$root"
 
   rpms_of "$image" > "$manifest.tmp"
