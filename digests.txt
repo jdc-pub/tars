@@ -1,3 +1,3 @@
 # Pinned base image. Move it with: tars os bump
 
-quay.io/fedora-ostree-desktops/cosmic-atomic:44    sha256:ff6301acfa7b3d0f8c73012d2f6db6a2e978c1dec7a3d07790cd92c4883f49d5
+quay.io/fedora-ostree-desktops/cosmic-atomic:44    sha256:ff69095877736d4dd6bdf58182cfb4b9bd9f43e55a28a6e2548dae1ad0a09f6e
