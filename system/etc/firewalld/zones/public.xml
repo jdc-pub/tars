@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<zone>
+  <short>Public</short>
+  <description>For use in public areas. Only DHCPv6 is accepted. SSH and everything else arrive over tailscale0, which is in the trusted zone.</description>
+  <service name="dhcpv6-client"/>
+  <forward/>
+</zone>
