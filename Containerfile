@@ -15,3 +15,5 @@ RUN --mount=type=cache,target=/var/cache/libdnf5,sharing=locked \
 
 # Files under system/ are copied onto / as-is.
 COPY system/ /
+
+RUN systemctl enable tars-sensor-log.service

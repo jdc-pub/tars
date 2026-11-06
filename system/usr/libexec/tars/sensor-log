@@ -1,0 +1,198 @@
+#!/usr/bin/python3
+"""Rolling hardware sensor log that survives a hard power cut.
+
+Every INTERVAL seconds, append one line of readings (hwmon temperatures,
+fans, power, voltages, CPU load and clock, busiest process) to
+LOG_DIR/sensors.log and fsync it. A thermal trip or power loss gives no chance
+to flush, so each line must already be on disk when it happens.
+
+The log keeps the last KEEP samples (it trims when it reaches 2*KEEP). On the
+first start of a boot the old log moves to sensors.1.log, then .2, .3, so a
+crash log survives a few reboots. "First start of a boot" is a marker file in
+RUN_DIR, which is empty after every reboot and survives service restarts.
+
+Stdlib only. Settings come from the environment.
+"""
+import glob
+import os
+import sys
+import time
+from datetime import datetime
+
+LOG_DIR = os.environ.get("TARS_SENSOR_LOG_DIR", "/var/log/tars")
+RUN_DIR = os.environ.get("TARS_SENSOR_RUN_DIR", "/run/tars")
+KEEP = int(os.environ.get("TARS_SENSOR_KEEP", "1000"))
+INTERVAL = float(os.environ.get("TARS_SENSOR_INTERVAL", "2"))
+OLD_LOGS = 3          # sensors.1.log .. sensors.N.log from earlier boots
+BUSY_PCT = 20.0       # name the busiest process when CPU use is above this
+
+CLK_TCK = os.sysconf("SC_CLK_TCK")
+# hwmon file prefix -> (divisor to the unit we print, decimals)
+KINDS = {"temp": (1000, 1), "fan": (1, 0), "power": (1e6, 1), "in": (1, 0)}
+
+
+def read(path):
+    """File contents, or None if it is gone. Process names and sensor labels
+    are not always UTF-8, so undecodable bytes are replaced, not fatal."""
+    try:
+        with open(path, errors="replace") as f:
+            return f.read().strip()
+    except OSError:
+        return None
+
+
+def hwmon():
+    out = {}
+    dirs = glob.glob("/sys/class/hwmon/hwmon*")
+    dirs.sort(key=lambda p: int(p.rsplit("hwmon", 1)[1]))
+    for d in dirs:
+        name = read(d + "/name") or os.path.basename(d)
+        for path in sorted(glob.glob(d + "/*_input")):
+            base = os.path.basename(path)[: -len("_input")]
+            kind = base.rstrip("0123456789")
+            raw = read(path)
+            if kind not in KINDS or raw is None:
+                continue
+            try:
+                value = int(raw)
+            except ValueError:
+                continue
+            div, decimals = KINDS[kind]
+            label = (read(f"{d}/{base}_label") or base).replace(" ", "_")
+            key = f"{name}.{label}"
+            if key in out:  # same chip twice, e.g. two NVMe drives
+                key += "@" + os.path.basename(d)
+            out[key] = f"{value / div:.{decimals}f}"
+    return out
+
+
+def cpu_times():
+    with open("/proc/stat") as f:
+        nums = [int(x) for x in f.readline().split()[1:]]
+    idle = nums[3] + (nums[4] if len(nums) > 4 else 0)  # idle + iowait
+    return idle, sum(nums)
+
+
+def cpu_mhz_max():
+    best = 0
+    for p in glob.glob("/sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq"):
+        try:
+            best = max(best, int(read(p) or 0))
+        except ValueError:
+            continue
+    return best // 1000
+
+
+def proc_ticks():
+    """pid -> (comm, utime+stime ticks) for every process we can read."""
+    out = {}
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        raw = read(f"/proc/{entry}/stat")
+        if not raw:
+            continue
+        # comm is in parentheses and may contain spaces or ')'
+        left, _, right = raw.rpartition(")")
+        rest = right.split()
+        try:
+            out[entry] = (left.partition("(")[2], int(rest[11]) + int(rest[12]))
+        except (IndexError, ValueError):
+            continue
+    return out
+
+
+def fsync_dir(path):
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def rotate(cur):
+    """sensors.log -> .1 -> .2 -> .3; the oldest is overwritten."""
+    for i in range(OLD_LOGS - 1, 0, -1):
+        try:
+            os.replace(f"{cur[:-4]}.{i}.log", f"{cur[:-4]}.{i + 1}.log")
+        except FileNotFoundError:
+            pass
+    os.replace(cur, f"{cur[:-4]}.1.log")
+    fsync_dir(LOG_DIR)
+
+
+def trim(cur):
+    """Keep the last KEEP lines, replaced atomically. Returns how many remain."""
+    with open(cur) as f:
+        lines = f.readlines()[-KEEP:]
+    tmp = cur + ".tmp"
+    with open(tmp, "w") as f:
+        f.writelines(lines)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, cur)
+    fsync_dir(LOG_DIR)
+    return len(lines)
+
+
+def sample(prev):
+    """One log line, and the state the next call needs."""
+    prev_idle, prev_total, prev_procs, prev_t = prev
+    now_t = time.monotonic()
+    idle, total = cpu_times()
+    procs = proc_ticks()
+    busy = 100.0 * (1 - (idle - prev_idle) / (total - prev_total)) if total > prev_total else 0.0
+
+    fields = {
+        "cpu_busy": f"{busy:.0f}%",
+        "cpu_mhz_max": str(cpu_mhz_max()),
+        "load1": f"{os.getloadavg()[0]:.2f}",
+    }
+    if busy >= BUSY_PCT:
+        ticks, comm = max(
+            ((procs[p][1] - prev_procs[p][1], procs[p][0]) for p in procs if p in prev_procs),
+            default=(0, "?"),
+        )
+        fields["top"] = f"{comm.replace(' ', '_')}:{100.0 * ticks / CLK_TCK / (now_t - prev_t):.0f}%"
+    fields.update(hwmon())
+
+    now = datetime.now().astimezone().isoformat(timespec="seconds")
+    return now + " " + " ".join(f"{k}={v}" for k, v in fields.items()), (idle, total, procs, now_t)
+
+
+def main():
+    os.makedirs(LOG_DIR, exist_ok=True)
+    os.makedirs(RUN_DIR, exist_ok=True)
+    cur = os.path.join(LOG_DIR, "sensors.log")
+    marker = os.path.join(RUN_DIR, "started")
+
+    # Rotate first, mark second: a crash in between rotates nothing twice,
+    # because the next start finds no sensors.log left to rotate.
+    if not os.path.exists(marker):
+        if os.path.exists(cur) and os.path.getsize(cur) > 0:
+            rotate(cur)
+        open(marker, "w").close()
+    count = trim(cur) if os.path.exists(cur) else 0
+
+    print(f"sensor-log: writing {cur} every {INTERVAL}s, keeping {KEEP}", file=sys.stderr, flush=True)
+    prev = (*cpu_times(), proc_ticks(), time.monotonic())
+    while True:
+        # Write until the file holds 2*KEEP samples, then trim it to KEEP.
+        with open(cur, "a") as log:
+            fsync_dir(LOG_DIR)  # make a newly created file durable
+            while count < 2 * KEEP:
+                time.sleep(INTERVAL)
+                try:
+                    line, prev = sample(prev)
+                except (OSError, ValueError) as e:  # a vanished /proc entry must not stop the log
+                    print(f"sensor-log: {e}", file=sys.stderr, flush=True)
+                    continue
+                log.write(line + "\n")
+                log.flush()
+                os.fsync(log.fileno())
+                count += 1
+        count = trim(cur)
+
+
+if __name__ == "__main__":
+    main()

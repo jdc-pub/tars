@@ -1,0 +1,22 @@
+[Unit]
+Description=Rolling hardware sensor log (fsynced, survives hard power loss)
+Documentation=file:///usr/libexec/tars/sensor-log
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/tars/sensor-log
+Restart=on-failure
+RestartSec=5
+Nice=10
+LogsDirectory=tars
+# /run/tars holds the "this boot is already rotated" marker. Preserve keeps it
+# across service restarts; it is empty again after every reboot.
+RuntimeDirectory=tars
+RuntimeDirectoryPreserve=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

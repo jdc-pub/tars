@@ -28,3 +28,9 @@ sudo bootc switch --transport containers-storage localhost/tars:44
 ```
 
 Reboot. From then on, update with `tars os update` and reboot. Roll back with `bootc rollback` or the boot menu.
+
+## Sensor log
+
+`tars-sensor-log.service` (enabled in the image) writes one line every 2 s to `/var/log/tars/sensors.log`: every hwmon temperature, fan, power and voltage reading, CPU busy %, peak clock, and the busiest process when the CPU is over 20% busy. Each line is `fsync`ed, so a hard power cut or thermal trip loses at most one sample. The file holds between 1000 and 2000 of the latest samples (33 to 66 min), because it trims in batches, and the previous three boots are kept as `sensors.1.log` to `sensors.3.log`. After a crash, read the end of `sensors.1.log`.
+
+Source: `system/usr/libexec/tars/sensor-log`. Tune with `TARS_SENSOR_INTERVAL` and `TARS_SENSOR_KEEP` in the unit.
