@@ -5,3 +5,4 @@ gh
 sqlite
 openssl-devel
 clang
+rex

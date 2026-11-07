@@ -3,6 +3,10 @@
 ARG BASE
 FROM ${BASE}
 
+# Repo definitions and dnf config must exist before the install below.
+COPY system/etc/yum.repos.d/ /etc/yum.repos.d/
+COPY system/etc/dnf/ /etc/dnf/
+
 COPY packages.txt /tmp/packages.txt
 # The cache mount keeps downloaded RPMs between builds and stays out of the
 # image, so there is no "dnf clean all". --refresh re-fetches repo metadata
