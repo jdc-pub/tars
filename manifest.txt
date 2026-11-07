@@ -1270,6 +1270,7 @@ rav1e-libs-0.8.1-3.fc44.x86_64
 readline-8.3-4.fc44.x86_64
 realmd-0.17.1-19.fc44.x86_64
 realtek-firmware-20261019-1.fc44.noarch
+rex-0.1.0~preview.13-1.x86_64
 rit-meera-new-fonts-1.6.2-5.fc44.noarch
 rit-rachana-fonts-1.5.2-5.fc44.noarch
 rootfiles-9.0-6.fc44.noarch
