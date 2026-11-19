@@ -7,3 +7,7 @@ openssl-devel
 clang
 rex
 vim
+yubikey-manager
+pam-u2f
+yubico-piv-tool
+fido2-tools
