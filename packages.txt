@@ -6,3 +6,4 @@ sqlite
 openssl-devel
 clang
 rex
+vim
